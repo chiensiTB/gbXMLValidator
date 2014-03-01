@@ -6,6 +6,7 @@ using System.Xml;
 using System.IO;
 using DOEgbXML;
 using VectorMath;
+using log4net;
 
 namespace gbXMLValidator
 {
@@ -28,7 +29,7 @@ namespace gbXMLValidator
             //2-check for valid XML and valid gbXML against the XSD
 
             //hardcoded for testing purposes, eventually this file will be uploaded, or sent via a Restful API call
-            string path = "C:\\Users\\Chiensi\\Documents\\C\\CarmelSoft\\gbXML Project\\Phase 2\\Test Files\\Test Case 5 - Standard File.xml";
+            string path = "C:\\gbXML\\4_2_0.xml";
             XmlReader xmlreader = XmlReader.Create(path);
             XmlDocument myxml = new XmlDocument();
             myxml.Load(xmlreader);
@@ -37,10 +38,6 @@ namespace gbXMLValidator
             XmlNamespaceManager nsm = parser.getnsmanager(myxml);
             //figure out if metric or USIP (we have not found a reason to use this yet)
             parser.getunits(nsm, myxml);
-
-
-
-
             //Begin Parsing the XML and reporting on it----------------------------------------------------------
             //make a reporting object
             DOEgbXMLReportingObj report = new DOEgbXMLReportingObj();
@@ -59,32 +56,35 @@ namespace gbXMLValidator
             //Unique CAD Object IDs?
             
             //Space Tests
-            //3-check for non-planar objects for all Spaces' polyloops
-            
-            
+            //make a simplified representation of the spaces
             List<DOEgbXML.gbXMLSpaces> spaces = DOEgbXML.gbXMLSpaces.getSimpleSpaces(myxml, nsm);
-
+            List<gbXMLSpaces.SpaceBoundary> sblist = gbXMLSpaces.GetSpaceBoundaryList(myxml, nsm);
+            
+            //check that all polyloops are in a counterclockwise direction
+            report = DOEgbXML.gbXMLSpaces.SpaceSurfacesCCTest(spaces, report);
+            //process report
+            report.Clear();
+            //-check for non-planar objects for all Spaces' polyloops
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesPlanarTest(spaces, report);
             //process report
             report.Clear();
 
             //4-check for self-intersecting polygons
-            
-            //Vertex Matching------------------------------------------------
-
-            //try to parse out the Space Boundary polyloops
-            Dictionary<Vector.CartCoord,Tuple<List<string>,List<bool>>> sbvertices = GetSGVertices(nsm, myxml);
-            //do all vertices have at least one match?  If yes, PASS and move on, if not, then.
-
-            VertexListToFile(sbvertices,"ShellGeometryCoords.txt");
-            //try to parse out the surfaces into my surface objects
-            //check the vertex files
-            Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> surfvertices = GetSurfVertices(nsm, myxml);
-            VertexListToFile(surfvertices, "SurfacesCoords.txt");
-            //check the vertex files
-            report = gbXMLSpaces.findStraySBVertices(@"C:\Temp\gbXML\SurfacesCoords.txt", report);
+            report = DOEgbXML.gbXMLSpaces.SpaceSurfacesSelfIntersectionTest(spaces, report);
             //process report
             report.Clear();
+            //Vertex Matching------------------------------------------------
+            FindMatchingEdges(sblist);
+
+            ////try to parse out the Space Boundary polyloops
+            //Dictionary<Vector.CartCoord,Tuple<List<string>,List<bool>>> sbvertices = GetSBVertices(nsm, myxml);
+            ////do all vertices have at least one match?  If yes, PASS and move on, if not, then.
+            //VertexListToFile(sbvertices,"SpaceBoundaryCoords.txt");
+            ////try to parse out the surfaces into my surface objects
+            ////check the vertex files
+            //report = gbXMLSpaces.findStraySBVertices(@"C:\Temp\gbXML\SpaceBoundaryCoords.txt", report);
+            ////process report
+            //report.Clear();
 
             //Surface tests----------------------------------------------------------------------------------
             //Basic Requirements ------------------------------------------------------
@@ -113,34 +113,38 @@ namespace gbXMLValidator
             //process report
             report.Clear();
 
+            
+            List<SurfaceDefinitions> surfaces = DOEgbXML.XMLParser.MakeSurfaceList(myxml, nsm);
+            //counter clockwise winding test
+            report = SurfaceDefinitions.SurfaceCCTest(surfaces, report);
+            //process report
+            report.Clear();
+
+            //planar surface test
+            report = SurfaceDefinitions.TestSurfacePlanarTest(surfaces, report);
+            //process report
+            report.Clear();
+
+            //self intersecting polygon test
+            report = SurfaceDefinitions.SurfaceSelfIntersectionTest(surfaces, report);
+            //process the report
+            report.Clear();
+
             //Does the polyloop right hand rule vector form the proper azimuth and tilt? (with and without a CADModelAzimuth)
             report.tolerance = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
+            report = SurfaceDefinitions.SurfaceTiltAndAzCheck(myxml, nsm, report);
+            //process report
+            report.Clear();
 
             //Is the Lower Left Corner properly defined?
 
-            //planar Surface Check
-            List<SurfaceDefinitions> surfaces = DOEgbXML.XMLParser.MakeSurfaceList(myxml, nsm);
-            SurfaceDefinitions.TestSurfacePlanarTest(surfaces);
-
-            //self-intersecting Polygon Check
-            report.testSummary = "This test checks to ensure the polygon definition for the surface forms non-intersecting enclosed polygon";
-            List<Vector.MemorySafe_CartCoord> coordlist = new List<Vector.MemorySafe_CartCoord>();
-            foreach (SurfaceDefinitions surface in surfaces)
-            {
-                for (int i = 0; i < surface.PlCoords.Count; i++)
-                {
-                    Vector.MemorySafe_CartCoord c = new Vector.MemorySafe_CartCoord(surface.PlCoords[i].X,surface.PlCoords[i].Y,surface.PlCoords[i].Z);
-                    coordlist.Add(c);
-                }
-                bool r = Vector.BruteForceIntersectionTest(coordlist);
-                if (!r)
-                {
-                    report.TestPassedDict.Add(surface.SurfaceId, false);
-                }
-            }
-
             //Vertex Matching
-
+            Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> surfvertices = GetSurfVertices(nsm, myxml);
+            VertexListToFile(surfvertices, "SurfacesCoords.txt");
+            //check the vertex files
+            report = gbXMLSpaces.findStraySBVertices(@"C:\Temp\gbXML\SurfacesCoords.txt", report);
+            //process report
+            report.Clear();
 
             //Openings Tests-----------------------------------------------------
 
@@ -151,7 +155,7 @@ namespace gbXMLValidator
 
         }
 
-        private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSGVertices(XmlNamespaceManager nsm, XmlDocument zexml)
+        private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSBVertices(XmlNamespaceManager nsm, XmlDocument zexml)
         {
             Dictionary<Vector.CartCoord,Tuple<List<string>,List<bool>>> sbdict = new Dictionary<Vector.CartCoord, Tuple<List<string>,List<bool>>>();
 
@@ -333,6 +337,765 @@ namespace gbXMLValidator
                 }
             }
             return surfdict;
+        }
+
+        public static void FindMatchingEdges(List<gbXMLSpaces.SpaceBoundary>sblist)
+        {
+
+            Dictionary<int, DOEgbXMLBasics.EdgeFamily> edges = new Dictionary<int, DOEgbXMLBasics.EdgeFamily>();
+            int distinctedges = 0;
+            foreach (gbXMLSpaces.SpaceBoundary sb in sblist)
+            {
+                int coordcount = sb.sbplane.pl.plcoords.Count;
+                for (int i = 0; i < coordcount; i++)
+                {
+                    //test edge
+                    DOEgbXMLBasics.EdgeFamily edge = new DOEgbXMLBasics.EdgeFamily();
+                    edge.sbdec = sb.surfaceIdRef;
+                    edge.relatedEdges = new List<DOEgbXMLBasics.EdgeFamily>();
+                    edge.startendpt = new List<Vector.MemorySafe_CartCoord>();
+                    if (edges.Count == 0)
+                    {
+                        edges[distinctedges] = edge;
+                        edge.startendpt.Add(sb.sbplane.pl.plcoords[i]);
+                        edge.startendpt.Add(sb.sbplane.pl.plcoords[i+1]);
+                        edge.sbdec = sb.surfaceIdRef;
+
+                        distinctedges++;
+                        continue;
+
+                    }
+                    //most edges work the same, in terms of the start and end point, except for the last edge (the else case)
+                    if (i < coordcount - 1)
+                    {
+                        edge.startendpt.Add(sb.sbplane.pl.plcoords[i]);
+                        edge.startendpt.Add(sb.sbplane.pl.plcoords[i + 1]);
+                        //search through existing edges to try and find a perfect match
+                        int edgecount = 0; //keeps track of how many guest edges in the dictionary I've searched through
+                        foreach(KeyValuePair<int,DOEgbXMLBasics.EdgeFamily> kp in edges)
+                        {
+                            
+                            Vector.MemorySafe_CartCoord startpt = kp.Value.startendpt[0];
+                            //tolerance needed?
+                            if (startpt.X == edge.startendpt[0].X && startpt.Y == edge.startendpt[0].Y && startpt.Z == edge.startendpt[0].Z)
+                            {
+                                //found at least one perfect coordinate match, try to match the second
+                                Vector.MemorySafe_CartCoord endpt = kp.Value.startendpt[1];
+                                if (endpt.X == edge.startendpt[1].X && endpt.Y == edge.startendpt[1].Y && endpt.Z == edge.startendpt[1].Z)
+                                {
+                                    //both match, means the match is perfect, so add it to the related surfaces list
+                                    kp.Value.relatedEdges.Add(edge);
+                                    break;
+                                }
+                                else
+                                {
+                                    //the edge may be unique, though it could still have neighboring relationships
+                                    //draw vector A
+                                    double Ax = endpt.X - edge.startendpt[1].X;
+                                    double Ay = endpt.Y - edge.startendpt[1].Y;
+                                    double Az = endpt.Z - edge.startendpt[1].Z;
+                                    Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+                                    double Amag = Vector.VectorMagnitude(A);
+
+                                    //take cross product to see if they are even in same plane
+                                    double evX = endpt.X - startpt.X;
+                                    double evY = endpt.Y - startpt.Y;
+                                    double evZ = endpt.Z - startpt.Z;
+                                    Vector.MemorySafe_CartVect ev = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                    double evmag = Vector.VectorMagnitude(ev);
+                                    Vector.MemorySafe_CartVect cross = Vector.CrossProduct(A,ev);
+                                    double crossmag = Vector.VectorMagnitude(cross);
+                                    //tolerance?
+                                    if (crossmag == 0)
+                                    {
+                                        //then we are at least parallel or antiparallel, now see if the point resides on the edge or outside of it
+                                        double Bx = startpt.X - edge.startendpt[1].X;
+                                        double By = startpt.Y - edge.startendpt[1].Y;
+                                        double Bz = startpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx,By,Bz);
+                                        double Bmag = Vector.VectorMagnitude(B);
+                                        //check to see if the test edge is inside the guest edge
+                                        if (Amag < evmag && Bmag < evmag)
+                                        {
+                                            //this means it lies on the plane at least, so it shares, but it is also still independent because a perfect match wasn't found
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //accumulate its own relationships
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+
+                                        double edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                        double edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                        double edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect edgevec = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                        double edgemag = Vector.VectorMagnitude(edgevec);
+
+                                        double Cx = startpt.X - edge.startendpt[1].X;
+                                        double Cy = startpt.Y - edge.startendpt[1].Y;
+                                        double Cz = startpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+
+                                        double Dx = endpt.X - edge.startendpt[1].X;
+                                        double Dy = endpt.Y - edge.startendpt[1].Y;
+                                        double Dz = endpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                        double Dmag = Vector.VectorMagnitude(D);
+
+                                        if (Dmag < edgemag && Cmag < edgemag)
+                                        {
+                                            //this means the test edge is longer than the guest edge, but they overlap
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //the edge is still unique but accumulates a neighbor
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+
+                                    }
+                                    else
+                                    {
+                                        //this other point isn't relevant, and the edges don't coincide
+                                        edgecount++;
+                                        continue;
+                                    }
+
+                                }
+
+
+                            }
+                            else if (startpt.X == edge.startendpt[1].X && startpt.Y == edge.startendpt[1].Y && startpt.Z == edge.startendpt[1].Z)
+                            {
+                                //found at least one perfect coordinate match, try to match the second
+                                Vector.MemorySafe_CartCoord endpt = kp.Value.startendpt[1];
+                                if (endpt.X == edge.startendpt[0].X && endpt.Y == edge.startendpt[0].Y && endpt.Z == edge.startendpt[0].Z)
+                                {
+                                    //both match, means the match is perfect, so add it to the related surfaces list
+                                    kp.Value.relatedEdges.Add(edge);
+                                    break;
+
+                                }
+                                else
+                                {
+                                    //the edge may be unique, though it could still have neighboring relationships
+                                    double Ax = endpt.X - edge.startendpt[0].X;
+                                    double Ay = endpt.Y - edge.startendpt[0].Y;
+                                    double Az = endpt.Z - edge.startendpt[0].Z;
+                                    Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+                                    double Amag = Vector.VectorMagnitude(A);
+
+                                    //take cross product to see if they are even in same plane
+                                    double evX = endpt.X - startpt.X;
+                                    double evY = endpt.Y - startpt.Y;
+                                    double evZ = endpt.Z - startpt.Z;
+                                    Vector.MemorySafe_CartVect ev = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                    double evmag = Vector.VectorMagnitude(ev);
+                                    Vector.MemorySafe_CartVect cross = Vector.CrossProduct(A, ev);
+                                    double crossmag = Vector.VectorMagnitude(cross);
+                                    //tolerance?
+                                    if (crossmag == 0)
+                                    {
+                                        //then we are at least parallel or antiparallel, now see if the point resides on the edge or outside of it
+                                        double Bx = startpt.X - edge.startendpt[0].X;
+                                        double By = startpt.Y - edge.startendpt[0].Y;
+                                        double Bz = startpt.Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+                                        double Bmag = Vector.VectorMagnitude(B);
+                                        //check to see if the test edge is inside the guest edge
+                                        if (Amag < evmag && Bmag < evmag)
+                                        {
+                                            //this means it lies on the plane at least, so it shares, but it is also still independent because a perfect match wasn't found
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //accumulate its own relationships
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+
+                                        double edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                        double edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                        double edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect edgevec = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                        double edgemag = Vector.VectorMagnitude(edgevec);
+
+                                        double Cx = startpt.X - edge.startendpt[0].X;
+                                        double Cy = startpt.Y - edge.startendpt[0].Y;
+                                        double Cz = startpt.Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+
+                                        double Dx = endpt.X - edge.startendpt[0].X;
+                                        double Dy = endpt.Y - edge.startendpt[0].Y;
+                                        double Dz = endpt.Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                        double Dmag = Vector.VectorMagnitude(D);
+
+                                        if (Dmag < edgemag && Cmag < edgemag)
+                                        {
+                                            //this means the test edge is longer than the guest edge, but they overlap
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //the edge is still unique but accumulates a neighbor
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        //this other point isn't relevant, and the edges don't coincide
+                                        edgecount++;
+                                        continue;
+                                    }
+                                }
+
+                            }
+                            //neither points perfectly coincide, so we do an exhaustive overlap check.
+                            else
+                            {
+                                Vector.MemorySafe_CartCoord endpt = kp.Value.startendpt[1];
+                                //are the two vectors even parallel?  because if they are not, no need to get more complex
+                                double evX = endpt.X - startpt.X;
+                                double evY = endpt.Y - startpt.Y;
+                                double evZ = endpt.Z - startpt.Z;
+                                Vector.MemorySafe_CartVect ev = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                double edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                double edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                double edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                Vector.MemorySafe_CartVect edgev = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                if (Vector.VectorMagnitude(Vector.CrossProduct(ev, edgev)) != 0)
+                                {
+                                    //they are not even parallel so move on
+                                    edgecount++;
+                                    continue;
+                                }
+
+                                //try to determine if the two edges are parallel
+                                //test edge point 1
+                                double Ax = endpt.X - edge.startendpt[0].X;
+                                double Ay = endpt.Y - edge.startendpt[0].Y;
+                                double Az = endpt.Z - edge.startendpt[0].Z;
+                                Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+                                double Amag = Vector.VectorMagnitude(A);
+
+                                //take cross product to see if they are even in same plane
+                                evX = endpt.X - startpt.X;
+                                evY = endpt.Y - startpt.Y;
+                                evZ = endpt.Z - startpt.Z;
+                                Vector.MemorySafe_CartVect ev1 = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                double guestmag = Vector.VectorMagnitude(ev1);
+                                Vector.MemorySafe_CartVect cross1 = Vector.CrossProduct(A, ev1);
+                                double crossmag = Vector.VectorMagnitude(cross1);
+                                //tolerance?
+                                if (crossmag == 0)
+                                {
+                                    //we are at least parallel, now to check for a real intersection
+                                    double Bx = startpt.X - edge.startendpt[0].X;
+                                    double By = startpt.Y - edge.startendpt[0].Y;
+                                    double Bz = startpt.Z - edge.startendpt[0].Z;
+                                    Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+                                    double Bmag = Vector.VectorMagnitude(B);
+                                    //check to see if the test edge's first point (index 0) is totally inside the guest edge
+                                    if (Amag < guestmag && Bmag < guestmag)
+                                    {
+                                        //the start point of the test edge is inside the guest edge
+                                        //test edge point 2 against guest edge point 2
+                                        double Cx = endpt.X - edge.startendpt[1].X;
+                                        double Cy = endpt.Y - edge.startendpt[1].Y;
+                                        double Cz = endpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+                                        Vector.MemorySafe_CartVect cross2 = Vector.CrossProduct(C, ev);
+                                        crossmag = Vector.VectorMagnitude(cross2);
+                                        if (crossmag == 0)
+                                        {
+                                            //we are at least parallel, in fact we have proven we are totall parallel, now intersect
+                                            double Dx = startpt.X - edge.startendpt[1].X;
+                                            double Dy = startpt.Y - edge.startendpt[1].Y;
+                                            double Dz = startpt.Z - edge.startendpt[1].Z;
+                                            Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                            double Dmag = Vector.VectorMagnitude(D);
+                                            if (Cmag < guestmag && Dmag < guestmag)
+                                            {
+                                                //then it is inside as well, and test vector is engulfed by guest vector
+                                                kp.Value.relatedEdges.Add(edge);
+                                                //but the edge is still itself unique
+                                                edge.relatedEdges.Add(kp.Value);
+                                                edgecount++;
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                //I am pretty sure that by default, they are still neighbors and this is no difference
+                                                //it simply extends beyond one of the ends of the guest vector
+                                                kp.Value.relatedEdges.Add(edge);
+                                                //but the edge is still itself unique
+                                                edge.relatedEdges.Add(kp.Value);
+                                                edgecount++;
+                                                continue;
+                                            }
+
+
+                                        }
+                                        else
+                                        {
+                                            //we are not parallel, so this is not an adjacency match
+                                            edgecount++;
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        //if test edge start point [index 0] is outside, is one of the guest points inside?
+                                        //already computed B
+                                        double Cx = startpt.X - edge.startendpt[1].X;
+                                        double Cy = startpt.Y - edge.startendpt[1].Y;
+                                        double Cz = startpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+
+                                        edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                        edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                        edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect edgevec = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                        double edgemag = Vector.VectorMagnitude(edgevec);
+
+                                        if (Cmag < edgemag && Bmag < edgemag)
+                                        {
+                                            //the guest edge's start point is inside the test edge
+                                            //guest edge point 2 
+                                            double Dx = endpt.X - edge.startendpt[1].X;
+                                            double Dy = endpt.Y - edge.startendpt[1].Y;
+                                            double Dz = endpt.Z - edge.startendpt[1].Z;
+                                            Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx,Dy,Dz);
+                                            double Dmag = Vector.VectorMagnitude(D);
+                                            Vector.MemorySafe_CartVect cross3 = Vector.CrossProduct(D, edgevec);
+                                            crossmag = Vector.VectorMagnitude(cross3);
+                                            if (crossmag == 0)
+                                            {
+                                                //then we know the two edges are totall parallel and lined up
+                                                //determine if the guest edge point 2 is inside the test edge or outside of it
+                                                double Ex = startpt.X - edge.startendpt[1].X;
+                                                double Ey = startpt.Y - edge.startendpt[1].Y;
+                                                double Ez = startpt.Z - edge.startendpt[1].Z;
+                                                Vector.MemorySafe_CartVect E = new Vector.MemorySafe_CartVect(Ex, Ey, Ez);
+                                                double Emag = Vector.VectorMagnitude(E);
+                                                if (Dmag < edgemag && Emag < edgemag)
+                                                {
+                                                    //it is inside
+                                                    kp.Value.relatedEdges.Add(edge);
+                                                    //but the edge is still itself unique
+                                                    edge.relatedEdges.Add(kp.Value);
+                                                    edgecount++;
+                                                    continue;
+                                                }
+                                                else
+                                                {
+                                                    //it is outside 
+                                                    kp.Value.relatedEdges.Add(edge);
+                                                    //but the edge is still itself unique
+                                                    edge.relatedEdges.Add(kp.Value);
+                                                    edgecount++;
+                                                    continue;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                //we are not parallel, so this is not an adjacency match
+                                                edgecount++;
+                                                continue;
+                                            }
+
+                                        }
+                                    }
+
+
+
+                                }
+                                else
+                                {
+                                    //they are not even parallel, so it is likely best just to shove on
+                                    edgecount++;
+                                    continue;
+                                }
+
+
+                            }
+                        }
+                        //this determines if it found a matching edge
+                        if (edgecount == edges.Count)
+                        {
+                            edges.Add(distinctedges, edge);
+                            distinctedges++;
+                        }
+
+                    }
+                    //last edge end edge is the zero index   
+                    else
+                    {
+                        edge.startendpt.Add(sb.sbplane.pl.plcoords[i]);
+                        edge.startendpt.Add(sb.sbplane.pl.plcoords[0]);
+                        int edgecount = 0; //keeps track of how many guest edges in the dictionary I've searched through
+                        foreach (KeyValuePair<int, DOEgbXMLBasics.EdgeFamily> kp in edges)
+                        {
+
+                            Vector.MemorySafe_CartCoord startpt = kp.Value.startendpt[0];
+                            //tolerance needed?
+                            if (startpt.X == edge.startendpt[0].X && startpt.Y == edge.startendpt[0].Y && startpt.Z == edge.startendpt[0].Z)
+                            {
+                                //found at least one perfect coordinate match, try to match the second
+                                Vector.MemorySafe_CartCoord endpt = kp.Value.startendpt[1];
+                                if (endpt.X == edge.startendpt[1].X && endpt.Y == edge.startendpt[1].Y && endpt.Z == edge.startendpt[1].Z)
+                                {
+                                    //both match, means the match is perfect, so add it to the related surfaces list
+                                    kp.Value.relatedEdges.Add(edge);
+                                    break;
+                                }
+                                else
+                                {
+                                    //the edge may be unique, though it could still have neighboring relationships
+                                    //draw vector A
+                                    double Ax = endpt.X - edge.startendpt[1].X;
+                                    double Ay = endpt.Y - edge.startendpt[1].Y;
+                                    double Az = endpt.Z - edge.startendpt[1].Z;
+                                    Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+                                    double Amag = Vector.VectorMagnitude(A);
+
+                                    //take cross product to see if they are even in same plane
+                                    double evX = endpt.X - startpt.X;
+                                    double evY = endpt.Y - startpt.Y;
+                                    double evZ = endpt.Z - startpt.Z;
+                                    Vector.MemorySafe_CartVect ev = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                    double evmag = Vector.VectorMagnitude(ev);
+                                    Vector.MemorySafe_CartVect cross = Vector.CrossProduct(A, ev);
+                                    double crossmag = Vector.VectorMagnitude(cross);
+                                    //tolerance?
+                                    if (crossmag == 0)
+                                    {
+                                        //then we are at least parallel or antiparallel, now see if the point resides on the edge or outside of it
+                                        double Bx = startpt.X - edge.startendpt[1].X;
+                                        double By = startpt.Y - edge.startendpt[1].Y;
+                                        double Bz = startpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+                                        double Bmag = Vector.VectorMagnitude(B);
+                                        //check to see if the test edge is inside the guest edge
+                                        if (Amag < evmag && Bmag < evmag)
+                                        {
+                                            //this means it lies on the plane at least, so it shares, but it is also still independent because a perfect match wasn't found
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //accumulate its own relationships
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+
+                                        double edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                        double edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                        double edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect edgevec = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                        double edgemag = Vector.VectorMagnitude(edgevec);
+
+                                        double Cx = startpt.X - edge.startendpt[1].X;
+                                        double Cy = startpt.Y - edge.startendpt[1].Y;
+                                        double Cz = startpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+
+                                        double Dx = endpt.X - edge.startendpt[1].X;
+                                        double Dy = endpt.Y - edge.startendpt[1].Y;
+                                        double Dz = endpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                        double Dmag = Vector.VectorMagnitude(D);
+
+                                        if (Dmag < edgemag && Cmag < edgemag)
+                                        {
+                                            //this means the test edge is longer than the guest edge, but they overlap
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //the edge is still unique but accumulates a neighbor
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+
+                                    }
+                                    else
+                                    {
+                                        //this other point isn't relevant, and the edges don't coincide
+                                        edgecount++;
+                                        continue;
+                                    }
+
+                                }
+
+
+                            }
+                            else if (startpt.X == edge.startendpt[1].X && startpt.Y == edge.startendpt[1].Y && startpt.Z == edge.startendpt[1].Z)
+                            {
+                                //found at least one perfect coordinate match, try to match the second
+                                Vector.MemorySafe_CartCoord endpt = kp.Value.startendpt[1];
+                                if (endpt.X == edge.startendpt[0].X && endpt.Y == edge.startendpt[0].Y && endpt.Z == edge.startendpt[0].Z)
+                                {
+                                    //both match, means the match is perfect, so add it to the related surfaces list
+                                    kp.Value.relatedEdges.Add(edge);
+                                    break;
+
+                                }
+                                else
+                                {
+                                    //the edge may be unique, though it could still have neighboring relationships
+                                    double Ax = endpt.X - edge.startendpt[0].X;
+                                    double Ay = endpt.Y - edge.startendpt[0].Y;
+                                    double Az = endpt.Z - edge.startendpt[0].Z;
+                                    Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+                                    double Amag = Vector.VectorMagnitude(A);
+
+                                    //take cross product to see if they are even in same plane
+                                    double evX = endpt.X - startpt.X;
+                                    double evY = endpt.Y - startpt.Y;
+                                    double evZ = endpt.Z - startpt.Z;
+                                    Vector.MemorySafe_CartVect ev = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                    double evmag = Vector.VectorMagnitude(ev);
+                                    Vector.MemorySafe_CartVect cross = Vector.CrossProduct(A, ev);
+                                    double crossmag = Vector.VectorMagnitude(cross);
+                                    //tolerance?
+                                    if (crossmag == 0)
+                                    {
+                                        //then we are at least parallel or antiparallel, now see if the point resides on the edge or outside of it
+                                        double Bx = startpt.X - edge.startendpt[0].X;
+                                        double By = startpt.Y - edge.startendpt[0].Y;
+                                        double Bz = startpt.Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+                                        double Bmag = Vector.VectorMagnitude(B);
+                                        //check to see if the test edge is inside the guest edge
+                                        if (Amag < evmag && Bmag < evmag)
+                                        {
+                                            //this means it lies on the plane at least, so it shares, but it is also still independent because a perfect match wasn't found
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //accumulate its own relationships
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+
+                                        double edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                        double edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                        double edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect edgevec = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                        double edgemag = Vector.VectorMagnitude(edgevec);
+
+                                        double Cx = startpt.X - edge.startendpt[0].X;
+                                        double Cy = startpt.Y - edge.startendpt[0].Y;
+                                        double Cz = startpt.Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+
+                                        double Dx = endpt.X - edge.startendpt[0].X;
+                                        double Dy = endpt.Y - edge.startendpt[0].Y;
+                                        double Dz = endpt.Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                        double Dmag = Vector.VectorMagnitude(D);
+
+                                        if (Dmag < edgemag && Cmag < edgemag)
+                                        {
+                                            //this means the test edge is longer than the guest edge, but they overlap
+                                            kp.Value.relatedEdges.Add(edge);
+                                            //the edge is still unique but accumulates a neighbor
+                                            edge.relatedEdges.Add(kp.Value);
+                                            edgecount++;
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        //this other point isn't relevant, and the edges don't coincide
+                                        edgecount++;
+                                        continue;
+                                    }
+                                }
+
+                            }
+                            //neither points perfectly coincide, so we do an exhaustive overlap check.
+                            else
+                            {
+                                Vector.MemorySafe_CartCoord endpt = kp.Value.startendpt[1];
+                                //are the two vectors even parallel?  because if they are not, no need to get more complex
+                                double evX = endpt.X - startpt.X;
+                                double evY = endpt.Y - startpt.Y;
+                                double evZ = endpt.Z - startpt.Z;
+                                Vector.MemorySafe_CartVect ev = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                double edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                double edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                double edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                Vector.MemorySafe_CartVect edgev = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                if (Vector.VectorMagnitude(Vector.CrossProduct(ev, edgev)) != 0)
+                                {
+                                    //they are not even parallel so move on
+                                    edgecount++;
+                                    continue;
+                                }
+                                //try to determine if the two edges are parallel
+                                
+                                //test edge point 1
+                                double Ax = endpt.X - edge.startendpt[0].X;
+                                double Ay = endpt.Y - edge.startendpt[0].Y;
+                                double Az = endpt.Z - edge.startendpt[0].Z;
+                                Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+                                double Amag = Vector.VectorMagnitude(A);
+
+                                //take cross product to see if they are even in same plane
+                                evX = endpt.X - startpt.X;
+                                evY = endpt.Y - startpt.Y;
+                                evZ = endpt.Z - startpt.Z;
+                                Vector.MemorySafe_CartVect ev1 = new Vector.MemorySafe_CartVect(evX, evY, evZ);
+                                double guestmag = Vector.VectorMagnitude(ev);
+                                Vector.MemorySafe_CartVect cross1 = Vector.CrossProduct(A, ev);
+                                double crossmag = Vector.VectorMagnitude(cross1);
+                                //tolerance?
+                                if (crossmag == 0)
+                                {
+                                    //we are at least parallel, now to check for a real intersection
+                                    double Bx = startpt.X - edge.startendpt[0].X;
+                                    double By = startpt.Y - edge.startendpt[0].Y;
+                                    double Bz = startpt.Z - edge.startendpt[0].Z;
+                                    Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+                                    double Bmag = Vector.VectorMagnitude(B);
+                                    //check to see if the test edge's first point (index 0) is totally inside the guest edge
+                                    if (Amag < guestmag && Bmag < guestmag)
+                                    {
+                                        //the start point of the test edge is inside the guest edge
+                                        //test edge point 2 against guest edge point 2
+                                        double Cx = endpt.X - edge.startendpt[1].X;
+                                        double Cy = endpt.Y - edge.startendpt[1].Y;
+                                        double Cz = endpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+                                        Vector.MemorySafe_CartVect cross2 = Vector.CrossProduct(C, ev);
+                                        crossmag = Vector.VectorMagnitude(cross2);
+                                        if (crossmag == 0)
+                                        {
+                                            //we are at least parallel, in fact we have proven we are totall parallel, now intersect
+                                            double Dx = startpt.X - edge.startendpt[1].X;
+                                            double Dy = startpt.Y - edge.startendpt[1].Y;
+                                            double Dz = startpt.Z - edge.startendpt[1].Z;
+                                            Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                            double Dmag = Vector.VectorMagnitude(D);
+                                            if (Cmag < guestmag && Dmag < guestmag)
+                                            {
+                                                //then it is inside as well, and test vector is engulfed by guest vector
+                                                kp.Value.relatedEdges.Add(edge);
+                                                //but the edge is still itself unique
+                                                edge.relatedEdges.Add(kp.Value);
+                                                edgecount++;
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                //I am pretty sure that by default, they are still neighbors and this is no difference
+                                                //it simply extends beyond one of the ends of the guest vector
+                                                kp.Value.relatedEdges.Add(edge);
+                                                //but the edge is still itself unique
+                                                edge.relatedEdges.Add(kp.Value);
+                                                edgecount++;
+                                                continue;
+                                            }
+
+
+                                        }
+                                        else
+                                        {
+                                            //we are not parallel, so this is not an adjacency match
+                                            edgecount++;
+                                            continue;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        //if test edge start point [index 0] is outside, is one of the guest points inside?
+                                        //already computed B
+                                        double Cx = startpt.X - edge.startendpt[1].X;
+                                        double Cy = startpt.Y - edge.startendpt[1].Y;
+                                        double Cz = startpt.Z - edge.startendpt[1].Z;
+                                        Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+                                        double Cmag = Vector.VectorMagnitude(C);
+
+                                        edgeX = edge.startendpt[1].X - edge.startendpt[0].X;
+                                        edgeY = edge.startendpt[1].Y - edge.startendpt[0].Y;
+                                        edgeZ = edge.startendpt[1].Z - edge.startendpt[0].Z;
+                                        Vector.MemorySafe_CartVect edgevec = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                                        double edgemag = Vector.VectorMagnitude(edgevec);
+
+                                        if (Cmag < edgemag && Bmag < edgemag)
+                                        {
+                                            //the guest edge's start point is inside the test edge
+                                            //guest edge point 2 
+                                            double Dx = endpt.X - edge.startendpt[1].X;
+                                            double Dy = endpt.Y - edge.startendpt[1].Y;
+                                            double Dz = endpt.Z - edge.startendpt[1].Z;
+                                            Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+                                            double Dmag = Vector.VectorMagnitude(D);
+                                            Vector.MemorySafe_CartVect cross3 = Vector.CrossProduct(D, edgevec);
+                                            crossmag = Vector.VectorMagnitude(cross3);
+                                            if (crossmag == 0)
+                                            {
+                                                //then we know the two edges are totall parallel and lined up
+                                                //determine if the guest edge point 2 is inside the test edge or outside of it
+                                                double Ex = startpt.X - edge.startendpt[1].X;
+                                                double Ey = startpt.Y - edge.startendpt[1].Y;
+                                                double Ez = startpt.Z - edge.startendpt[1].Z;
+                                                Vector.MemorySafe_CartVect E = new Vector.MemorySafe_CartVect(Ex, Ey, Ez);
+                                                double Emag = Vector.VectorMagnitude(E);
+                                                if (Dmag < edgemag && Emag < edgemag)
+                                                {
+                                                    //it is inside
+                                                    kp.Value.relatedEdges.Add(edge);
+                                                    //but the edge is still itself unique
+                                                    edge.relatedEdges.Add(kp.Value);
+                                                    edgecount++;
+                                                    continue;
+                                                }
+                                                else
+                                                {
+                                                    //it is outside 
+                                                    kp.Value.relatedEdges.Add(edge);
+                                                    //but the edge is still itself unique
+                                                    edge.relatedEdges.Add(kp.Value);
+                                                    edgecount++;
+                                                    continue;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                //we are not parallel, so this is not an adjacency match
+                                                edgecount++;
+                                                continue;
+                                            }
+
+                                        }
+                                    }
+
+
+
+                                }
+                                else
+                                {
+                                    //they are not even parallel, so it is likely best just to shove on
+                                    edgecount++;
+                                    continue;
+                                }
+
+
+                            }
+                        }
+                        //this determines if it found a matching edge
+                        if (edgecount == edges.Count)
+                        {
+                            edges.Add(distinctedges, edge);
+                            distinctedges++;
+                        }
+                    }
+
+                }
+            }
         }
 
         private static void VertexListToFile(Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> vertices, string filename)

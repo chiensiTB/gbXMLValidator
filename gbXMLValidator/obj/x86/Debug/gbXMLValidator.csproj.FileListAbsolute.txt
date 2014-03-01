@@ -1,12 +1,12 @@
+C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\DOEgbxml.dll
+C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\DOEgbxml.pdb
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\gbXMLValidator.exe.config
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\gbXMLValidator.exe
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\gbXMLValidator.pdb
-C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\DOEgbxml.dll
-C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\VectorMath.dll
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\log4net.dll
-C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\DOEgbxml.pdb
-C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\VectorMath.pdb
+C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\VectorMath.dll
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\log4net.xml
+C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\VectorMath.pdb
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\obj\x86\Debug\ResolveAssemblyReference.cache
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\obj\x86\Debug\gbXMLValidator.exe
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\obj\x86\Debug\gbXMLValidator.pdb
