@@ -73,8 +73,13 @@ namespace gbXMLValidator
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesSelfIntersectionTest(spaces, report);
             //process report
             report.Clear();
+
+            //valid space enclosure
+            report = DOEgbXML.gbXMLSpaces.areSpacesEnclosed(spaces, report, true);
             //Vertex Matching------------------------------------------------
             FindMatchingEdges(sblist);
+
+
 
             ////try to parse out the Space Boundary polyloops
             //Dictionary<Vector.CartCoord,Tuple<List<string>,List<bool>>> sbvertices = GetSBVertices(nsm, myxml);
