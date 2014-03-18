@@ -9,10 +9,10 @@ It is the first time an open-source validator like this has been written in any 
 
 The base code is written in C#, and has several dependencies on other C# Open Source libraries that I have written.
 
-VectorMath.dll - a code base for basic vector operations in C# that you can learn more about here
+VectorMath.dll - a code base for basic vector operations in C# that you can learn more about by looking at my github repo.
 
-DOEgbXML.dll - a code base for basic gbXML parse routines, which I wrote on behalf of PNNL and the DOE
+DOEgbXML.dll - a code base for basic gbXML parse routines, which I wrote on behalf of PNNL and the DOE.  This is also in the repo.
 
-Read the wiki to learn a lot more about this project and how it has been designed.
+Read the wiki to learn more about this project and how it has been designed.
 
 
