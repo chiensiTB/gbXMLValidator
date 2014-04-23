@@ -29,7 +29,7 @@ namespace gbXMLValidator
             //2-check for valid XML and valid gbXML against the XSD
 
             //hardcoded for testing purposes, eventually this file will be uploaded, or sent via a Restful API call
-            string path = @"C:\gbXML\20_20.xml";
+            string path = @"C:\Temp\gbXML\20_20.xml";
             XmlReader xmlreader = XmlReader.Create(path);
             XmlDocument myxml = new XmlDocument();
             myxml.Load(xmlreader);
@@ -40,7 +40,7 @@ namespace gbXMLValidator
             parser.getunits(nsm, myxml);
             //Begin Parsing the XML and reporting on it----------------------------------------------------------
             //make a reporting object
-            DOEgbXMLReportingObj report = new DOEgbXMLReportingObj();
+            DOEgbXMLPhase2Report report = new DOEgbXMLPhase2Report();
 
             //Basic Uniqueness Constraints check-------------------------------------------------
 
@@ -48,7 +48,7 @@ namespace gbXMLValidator
 
 
             //ensure that all names of spaces are unique
-            report = DOEgbXML.gbXMLSpaces.UniqueSpaceIdTest(myxml, nsm, report);
+            report = DOEgbXML.gbXMLSpaces.UniqueSpaceIdTest2(myxml, nsm, report);
             //process report
             report.Clear();
             //ensure that all space boundary names are unique
@@ -57,7 +57,7 @@ namespace gbXMLValidator
             if (nodes.Count > 0)
             {
                 spaceBoundsPresent = true;
-                report = DOEgbXML.gbXMLSpaces.UniqueSpaceBoundaryIdTest(myxml, nsm, report);
+                report = DOEgbXML.gbXMLSpaces.UniqueSpaceBoundaryIdTest2(myxml, nsm, report);
                 //process report
                 report.Clear();
             }
@@ -69,21 +69,27 @@ namespace gbXMLValidator
 
 
             //4-check for self-intersecting polygons
-            report = DOEgbXML.gbXMLSpaces.SpaceSurfacesSelfIntersectionTest(spaces, report);
+            //report = DOEgbXML.gbXMLSpaces.SpaceSurfacesSelfIntersectionTest(spaces, report);
             //process report
             report.Clear();
             //check that all polyloops are in a counterclockwise direction
-            report = DOEgbXML.gbXMLSpaces.SpaceSurfacesCCTest(spaces, report);
+
+            report = DOEgbXML.gbXMLSpaces.SpaceSurfacesCCTest2(spaces, report);
             //process report
             report.Clear();
             //-check for non-planar objects for all Spaces' polyloops
+            report.coordtol = .0001;
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesPlanarTest(spaces, report);
             //process report
             report.Clear();
 
 
-            //valid space enclosure
-            report = CheckSpaceEnclosure(spaces, report);
+            //valid space enclosure?
+            report.tolerance = 0.0001;
+            report.vectorangletol = 0.00001;
+            report.lengthtol = 0.0001;
+            report.coordtol = 0.00001;
+            report = CheckSpaceEnclosureSG(spaces, report);
             //process report
             report.Clear();
 
@@ -96,6 +102,7 @@ namespace gbXMLValidator
             //process report
             report.Clear();
             //Does the AdjacentSpaceId not exceed the max number allowable?
+            //this needs to be updated!
             report = SurfaceDefinitions.AtMost2SpaceAdjId(myxml, nsm, report);
             //process report
             report.Clear();
@@ -108,62 +115,18 @@ namespace gbXMLValidator
             //process report
             report.Clear();
 
-
+            //now grab all the surfaceIds and make them available
+            List<string> spaceIds = new List<string>();
+            foreach(gbXMLSpaces s in spaces)
+            {
+                spaceIds.Add(s.id);
+            }
             
             List<SurfaceDefinitions> surfaces = DOEgbXML.XMLParser.MakeSurfaceList(myxml, nsm);
-
-            //Does the polyloop right hand rule vector form the proper azimuth and tilt? (with and without a CADModelAzimuth)
-            report.tolerance = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
-            report = SurfaceDefinitions.SurfaceTiltAndAzCheck(myxml, nsm, report);
-            //process report
+            //make sure the surface Adjacent space Id names match only the the space Ids gathered above.  The adjacent space Ids can't have their own special values
+            report = DOEgbXML.SurfaceDefinitions.SurfaceAdjSpaceIdTest(spaceIds,surfaces, report);
             report.Clear();
 
-            //planar surface test
-            report = SurfaceDefinitions.TestSurfacePlanarTest(surfaces, report);
-            //process report
-            report.Clear();
-
-            //counter clockwise winding test
-            report = SurfaceDefinitions.SurfaceCCTest(surfaces, report);
-            //process report
-            report.Clear();
-
-            //self intersecting polygon test
-            report = SurfaceDefinitions.SurfaceSelfIntersectionTest(surfaces, report);
-            //process the report
-            report.Clear();
-
-
-            //Is the Lower Left Corner properly defined?
-
-            //Vertex Matching
-
-            //surface enclosure tests
-            string searchpath = "/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space";
-            List<string> spaceids = DOEgbXML.gbXMLSpaces.getSpaceIds(myxml,nsm,searchpath);
-            Dictionary<string, List<SurfaceDefinitions>> enclosure = new Dictionary<string, List<SurfaceDefinitions>>();
-            foreach (string id in spaceids)
-            {
-                //find all surfaces with this adjacent space id
-                //get their polyloops
-                //and then match their polyloops
-                List<SurfaceDefinitions> surflist = new List<SurfaceDefinitions>();
-                foreach(SurfaceDefinitions surf in surfaces)
-                {
-                    foreach (var adj in surf.AdjSpaceId)
-                    {
-                        if (adj == id)
-                        {
-                            surflist.Add(surf); 
-                        }
-                    }
-                }
-                enclosure[id] = surflist;
-            }
-
-            report = CheckSurfaceEnclosure(enclosure, report);
-
-           
             if (spaceBoundsPresent)
             {
                 report.tolerance = DOEgbXMLBasics.Tolerances.coordToleranceIP;
@@ -171,6 +134,66 @@ namespace gbXMLValidator
                 //process report
                 report.Clear();
             }
+
+            //Does the polyloop right hand rule vector form the proper azimuth and tilt? (with and without a CADModelAzimuth)
+            report.tolerance = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
+            report.vectorangletol = 0.0001;
+            report = SurfaceDefinitions.SurfaceTiltAndAzCheck(myxml, nsm, report);
+            //process report
+            report.Clear();
+
+            //planar surface test
+            report.vectorangletol = 0.0001;
+            report = SurfaceDefinitions.TestSurfacePlanarTest(surfaces, report);
+            //process report
+            report.Clear();
+
+            //I must take the surfaces, group them, and rearrange any interior surfaces' coordinates that should be pointed the opposite way
+            string searchpath = "/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space";
+            List<string> spaceids = DOEgbXML.gbXMLSpaces.getSpaceIds(myxml, nsm, searchpath);
+            Dictionary<string, List<SurfaceDefinitions>> enclosure = new Dictionary<string, List<SurfaceDefinitions>>();
+            foreach (string id in spaceids)
+            {
+                //find all surfaces with this adjacent space id
+                //get their polyloops
+                //and then match their polyloops
+                List<SurfaceDefinitions> surflist = new List<SurfaceDefinitions>();
+                foreach (SurfaceDefinitions surf in surfaces)
+                {
+                    
+                    foreach (var adj in surf.AdjSpaceId)
+                    {
+                        if (adj == id)
+                        {
+                            surflist.Add(surf);
+                        }
+
+                    }
+                }
+                enclosure[id] = surflist;
+            }
+
+            //counter clockwise winding test
+            report = SurfaceDefinitions.SurfaceCCTest(enclosure, report);
+            //process report
+            report.Clear();
+
+            //self intersecting polygon test
+            //report = SurfaceDefinitions.SurfaceSelfIntersectionTest(surfaces, report);
+            //process the report
+            report.Clear();
+
+
+            //Is the Lower Left Corner properly defined?
+
+            //surface enclosure tests
+            report.tolerance = 0.0001;
+            report.vectorangletol = 0.00001;
+            report.lengthtol = 0.0001;
+            report.coordtol = 0.00001;
+            report = CheckSurfaceEnclosure(enclosure, report);
+
+          
             //Openings Tests-----------------------------------------------------
 
             //Shading Devices Tests----------------------------------------------
@@ -179,87 +202,87 @@ namespace gbXMLValidator
             
 
         }
+        //April 14, 2014 - Deprecated as not useful or within scope
+        //private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSBVertices(XmlNamespaceManager nsm, XmlDocument zexml)
+        //{
+        //    Dictionary<Vector.CartCoord,Tuple<List<string>,List<bool>>> sbdict = new Dictionary<Vector.CartCoord, Tuple<List<string>,List<bool>>>();
 
-        private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSBVertices(XmlNamespaceManager nsm, XmlDocument zexml)
-        {
-            Dictionary<Vector.CartCoord,Tuple<List<string>,List<bool>>> sbdict = new Dictionary<Vector.CartCoord, Tuple<List<string>,List<bool>>>();
+        //    //get each space boundary
+        //    XmlNodeList nodes = zexml.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space/gbXMLv5:SpaceBoundary", nsm);
 
-            //get each space boundary
-            XmlNodeList nodes = zexml.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space/gbXMLv5:SpaceBoundary", nsm);
+        //    int sbcount = 0;
+        //    foreach (XmlNode sbnode in nodes)
+        //    {
+        //        //record the name of the space boundary
+        //        string sbname="";
+        //        XmlAttributeCollection spaceAtts = sbnode.Attributes;
+        //        foreach (XmlAttribute at in spaceAtts)
+        //        {
+        //            if (at.Name == "surfaceIdRef")
+        //            {
+        //                sbname = at.Value;
+        //                break;
+        //            }
+        //        }
+        //        //create list of unique vertices
+        //        XmlNode closedshell = sbnode.FirstChild;
+        //        XmlNode PL = closedshell.FirstChild;
 
-            int sbcount = 0;
-            foreach (XmlNode sbnode in nodes)
-            {
-                //record the name of the space boundary
-                string sbname="";
-                XmlAttributeCollection spaceAtts = sbnode.Attributes;
-                foreach (XmlAttribute at in spaceAtts)
-                {
-                    if (at.Name == "surfaceIdRef")
-                    {
-                        sbname = at.Value;
-                        break;
-                    }
-                }
-                //create list of unique vertices
-                XmlNode closedshell = sbnode.FirstChild;
-                XmlNode PL = closedshell.FirstChild;
-
-                foreach (XmlNode cp in PL)
-                {
+        //        foreach (XmlNode cp in PL)
+        //        {
                     
-                    if (cp.Name == "CartesianPoint")
-                    {
-                        sbdict = AddCoordinate(sbcount, sbname, sbdict, cp);
-                    }
-                }
-                //XmlNodeList cnodes = sbnode.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space/gbXMLv5:SpaceBoundary/gbXMLv5:PlanarGeometry//gbXMLv5:PolyLoop", nsm);
-                sbcount++;
-            }
-            return sbdict;
-        }
+        //            if (cp.Name == "CartesianPoint")
+        //            {
+        //                sbdict = AddCoordinate(sbcount, sbname, sbdict, cp);
+        //            }
+        //        }
+        //        //XmlNodeList cnodes = sbnode.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space/gbXMLv5:SpaceBoundary/gbXMLv5:PlanarGeometry//gbXMLv5:PolyLoop", nsm);
+        //        sbcount++;
+        //    }
+        //    return sbdict;
+        //}
 
-        private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSurfVertices(XmlNamespaceManager nsm, XmlDocument zexml)
-        {
-            Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> surfdict = new Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>>();
+        //private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSurfVertices(XmlNamespaceManager nsm, XmlDocument zexml)
+        //{
+        //    Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> surfdict = new Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>>();
 
-            //get each space boundary
-            XmlNodeList nodes = zexml.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Surface", nsm);
+        //    //get each space boundary
+        //    XmlNodeList nodes = zexml.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Surface", nsm);
 
-            int surfcount = 0;
-            foreach (XmlNode surfnode in nodes)
-            {
-                //record the name of the space boundary
-                string surfname = "";
-                XmlAttributeCollection spaceAtts = surfnode.Attributes;
-                foreach (XmlAttribute at in spaceAtts)
-                {
-                    if (at.Name == "id")
-                    {
-                        surfname = at.Value;
-                        break;
-                    }
-                }
-                //create list of unique vertices
-                foreach (XmlNode childnode in surfnode)
-                {
-                    if (childnode.Name == "PlanarGeometry")
-                    {
-                        XmlNode PL = childnode.FirstChild;
-                        foreach (XmlNode cp in PL)
-                        {
+        //    int surfcount = 0;
+        //    foreach (XmlNode surfnode in nodes)
+        //    {
+        //        //record the name of the space boundary
+        //        string surfname = "";
+        //        XmlAttributeCollection spaceAtts = surfnode.Attributes;
+        //        foreach (XmlAttribute at in spaceAtts)
+        //        {
+        //            if (at.Name == "id")
+        //            {
+        //                surfname = at.Value;
+        //                break;
+        //            }
+        //        }
+        //        //create list of unique vertices
+        //        foreach (XmlNode childnode in surfnode)
+        //        {
+        //            if (childnode.Name == "PlanarGeometry")
+        //            {
+        //                XmlNode PL = childnode.FirstChild;
+        //                foreach (XmlNode cp in PL)
+        //                {
 
-                            if (cp.Name == "CartesianPoint")
-                            {
-                                surfdict = AddCoordinate(surfcount, surfname, surfdict, cp);
-                            }
-                        }
-                        surfcount++;
-                    }
-                }
-            }
-            return surfdict;
-        }
+        //                    if (cp.Name == "CartesianPoint")
+        //                    {
+        //                        surfdict = AddCoordinate(surfcount, surfname, surfdict, cp);
+        //                    }
+        //                }
+        //                surfcount++;
+        //            }
+        //        }
+        //    }
+        //    return surfdict;
+        //}
 
         private static Vector.CartCoord makeCoord(XmlNode cartesianPoint)
         {
@@ -724,9 +747,49 @@ namespace gbXMLValidator
             return uniqueedges;
         }
 
-        
+        public static DOEgbXMLPhase2Report CheckSpaceEnclosureSB(List<gbXMLSpaces> spaces, DOEgbXMLPhase2Report report)
+        {
+            try
+            {
+                foreach (gbXMLSpaces space in spaces)
+                {
+                    List<string> ml = new List<string>();
+                    if (space.spacebounds.Count() > 0)
+                    {
+                        
+                        ml.Add(space.id + ": Testing begins for Space Boundary water tightness.");
+                        Dictionary<int, Vector.EdgeFamily> uniqueedges = new Dictionary<int, Vector.EdgeFamily>();
+                        ml.Add(space.id + ": has SpaceBoundary representation.");
+                        ml.Add(space.id + ": START checking space boundary enclosure.");
+                        foreach (DOEgbXML.gbXMLSpaces.SpaceBoundary sb in space.spacebounds)
+                        {
+                            uniqueedges = Vector.GetEdgeFamilies(sb.surfaceIdRef, uniqueedges, sb.sbplane.pl.plcoords, .0001, .0001);
+                        }
+                        ml.Add(space.id + ": Gathered space boundary edges and neighboring relationships.");
+                        //see how well enclosure is formed
+                        ml.Add(space.id + ": Validating space boundary edge alignment with one another - water tightness check.");
 
-        public static DOEgbXMLReportingObj CheckSpaceEnclosure(List<gbXMLSpaces> spaces, DOEgbXMLReportingObj report)
+                        //new function added April 11, 2014
+                        report = MatchEdges(uniqueedges, ml, report, space.id);
+                           
+                    }
+                    else
+                    {
+                        ml.Add(space.id + ": Has no Valid Space Boundaries.  This is not an error.  The validator will continue searching for other enclosed boundaries.");
+                    }
+                    report.MessageList[space.id] = ml;
+                }
+            }
+            catch (Exception e)
+            {
+                report.longMsg = ("SORRY, we have run into an unexpected issue:" + e.ToString());
+                report.passOrFail = false;
+                return report;
+            }
+            return report;
+        }
+
+        public static DOEgbXMLPhase2Report CheckSpaceEnclosureSG(List<gbXMLSpaces> spaces, DOEgbXMLPhase2Report report)
         {
             try
             {
@@ -735,170 +798,82 @@ namespace gbXMLValidator
 
                 foreach (gbXMLSpaces space in spaces)
                 {
-                    report.MessageList.Add(space.id + ": Testing begins");
+                    List<string> ml = new List<string>();
+                    ml.Add(space.id + ": Testing begins");
                     Dictionary<int, Vector.EdgeFamily> uniqueedges = new Dictionary<int, Vector.EdgeFamily>();
 
                     if (space.sg.cs.ploops.Count() > 0)
                     {
-                        report.MessageList.Add(space.id+": has shell geometry polyloops defined.");
-                        report.MessageList.Add(space.id+": START checking shell geometry enclosure.");
+                        ml.Add(space.id + ": has shell geometry polyloops defined.");
+                        ml.Add(space.id + ": START checking shell geometry enclosure.");
                         int sgcount = 0;
                         foreach (DOEgbXML.gbXMLSpaces.PolyLoop pl in space.sg.cs.ploops)
                         {
                             string surfaceid = space.id + "_" + sgcount;
-                            uniqueedges = Vector.GetEdgeFamilies(surfaceid, uniqueedges, pl.plcoords,.0001,.0001);
+                            uniqueedges = Vector.GetEdgeFamilies(surfaceid, uniqueedges, pl.plcoords, .0001, .0001);
                             sgcount++;
                         }
-                        report.MessageList.Add(space.id+": Gathered shell geometry edges and neighboring relationships.");
+                        ml.Add(space.id + ": Gathered shell geometry edges and neighboring relationships.");
                         //see how well enclosure is formed
-                        report.MessageList.Add(space.id+": Validating shell geometry edge alignment with one another - water tightness check.");
-
-                        foreach (KeyValuePair<int, Vector.EdgeFamily> edgekp in uniqueedges)
-                        {
-
-                            if (edgekp.Value.relatedEdges.Count() == 1)
-                            {
-                                //should match perfectly
-                                List<bool> match = new List<bool>();
-                                double tol = report.tolerance;
-                                for (int i = 0; i < 2; i++)
-                                {
-                                    Vector.MemorySafe_CartCoord p1 = edgekp.Value.relatedEdges[0].startendpt[i];
-                                    for (int j = 0; j < 2; j++)
-                                    {
-                                        Vector.MemorySafe_CartCoord p2 = edgekp.Value.startendpt[j];
-                                        if (p2.X == p1.X && p2.Y == p1.Y && p2.Z == p1.Z)
-                                        {
-                                            match.Add(true);
-                                            report.MessageList.Add("Surface: " + edgekp.Value.sbdec + " is matched perfectly with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
-                                        }
-                                        else if (Math.Abs(p2.X - p1.X) < tol && Math.Abs(p2.Y - p1.Y) < tol && Math.Abs(p2.Z - p1.Z) < tol)
-                                        {
-                                            match.Add(true);
-                                            report.MessageList.Add("Surface: " + edgekp.Value.sbdec + " is matched within tolerance with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
-                                        }
-                                    }
-                                }
-                                if (match.Count() < 2)
-                                {
-                                    report.MessageList.Add("WARNING: This space appears to have an invalid enclosure.");
-                                }
-                            }
-                            else if (edgekp.Value.relatedEdges.Count() > 1)
-                            {
-                                //more robust testing
-                            }
-                            else if (edgekp.Value.relatedEdges.Count() == 0)
-                            {
-                                //something is wrong
-                                report.MessageList.Add("WARNING:  This space has an edge that has no relationships.  Indicates a volume that is not enclosed.");
-                            }
-                        }
-                        
+                        ml.Add(space.id + ": Validating shell geometry edge alignment with one another - water tightness check.");
+                        //new function added April 11, 2014
+                        report = MatchEdges(uniqueedges, ml, report, space.id);
                     }
-                    //see how well enclosure is formed
-                    report.MessageList.Add(space.id+": Validating shell geometry edge alignment with one another - water tightness check.");
-
-
-                    if (space.spacebounds.Count() > 0)
+                    else
                     {
-                        uniqueedges.Clear();
-                        report.MessageList.Add(space.id + ": has SpaceBoundary representation.");
-                        report.MessageList.Add(space.id + ": START checking space boundary enclosure.");
-                        foreach (DOEgbXML.gbXMLSpaces.SpaceBoundary sb in space.spacebounds)
-                        {
-                            uniqueedges = Vector.GetEdgeFamilies(sb.surfaceIdRef, uniqueedges, sb.sbplane.pl.plcoords,.0001,.0001);
-                        }
-                        report.MessageList.Add(space.id + ": Gathered space boundary edges and neighboring relationships.");
-
-
-                        //see how well enclosure is formed
-                        report.MessageList.Add(space.id + ": Validating space boundary edge alignment with one another - water tightness check.");
-
-                        foreach (KeyValuePair<int, Vector.EdgeFamily> edgekp in uniqueedges)
-                        {
-
-                            if (edgekp.Value.relatedEdges.Count() == 1)
-                            {
-                                //should match perfectly
-                                List<bool> match = new List<bool>();
-                                double tol = report.tolerance;
-                                for (int i = 0; i < 2; i++)
-                                {
-                                    Vector.MemorySafe_CartCoord p1 = edgekp.Value.relatedEdges[0].startendpt[i];
-                                    for (int j = 0; j < 2; j++)
-                                    {
-                                        Vector.MemorySafe_CartCoord p2 = edgekp.Value.startendpt[j];
-                                        if (p2.X == p1.X && p2.Y == p1.Y && p2.Z == p1.Z)
-                                        {
-                                            match.Add(true);
-                                            report.MessageList.Add("Surface: " + edgekp.Value.sbdec + " is matched perfectly with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
-                                        }
-                                        else if (Math.Abs(p2.X - p1.X) < tol && Math.Abs(p2.Y - p1.Y) < tol && Math.Abs(p2.Z - p1.Z) < tol)
-                                        {
-                                            match.Add(true);
-                                            report.MessageList.Add("Surface: " + edgekp.Value.sbdec + " is matched within tolerance with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
-                                        }
-                                    }
-                                }
-                                if (match.Count() < 2)
-                                {
-                                    report.MessageList.Add("WARNING: This space appears to have an invalid enclosure.");
-                                }
-                            }
-                            else if (edgekp.Value.relatedEdges.Count() > 1)
-                            {
-                                //more robust testing
-                            }
-                            else if (edgekp.Value.relatedEdges.Count() == 0)
-                            {
-                                //something is wrong
-                                report.MessageList.Add("WARNING:  This space has an edge that has no relationships.  Indicates a volume that is not enclosed.");
-                            }
-                        }
+                        ml.Add(space.id + ": Has no valid shell geometry definition.  This is not an error.  The validator will continue searching for other enclosed boundaries.");
                     }
+                    report.MessageList[space.id] = ml;
                 }
 
             }
             catch (Exception e)
             {
-
+                report.longMsg = ("SORRY, we have run into an unexpected issue:" + e.ToString());
+                report.passOrFail = false;
+                return report;
             }
             return report;
         }
 
-        public static DOEgbXMLReportingObj CheckSurfaceEnclosure(Dictionary<string, List<SurfaceDefinitions>> surfaceEnclosures, DOEgbXMLReportingObj report)
+        //April 11, 2014
+        //This is the algorithm that attempts to find matches of edges on the enclosure.  It is used by all the Check Enclosure routines.
+        //by Chien Harriman - Carmel Software Corporation
+        public static DOEgbXMLPhase2Report MatchEdges(Dictionary<int,Vector.EdgeFamily> uniqueedges, List<string> ml, DOEgbXMLPhase2Report report, string spaceid)
         {
             try
             {
-                report.testSummary = "This test checks surfaces proclaiming to be children of a given space ID.";
-                report.testSummary += "  It searches each of the surfaces' edges and tries to find other edges that align.";
-
-                foreach (KeyValuePair<string, List<SurfaceDefinitions>> kp in surfaceEnclosures)
+                foreach (KeyValuePair<int, Vector.EdgeFamily> edgekp in uniqueedges)
                 {
-                    report.MessageList.Add(kp.Key+": Testing begins.");
-                    Dictionary<int, Vector.EdgeFamily> uniqueedges = new Dictionary<int, Vector.EdgeFamily>();
-                    
-                    foreach (SurfaceDefinitions surface in kp.Value)
+
+                    if (edgekp.Value.relatedEdges.Count() == 1)
                     {
-                        uniqueedges = Vector.GetEdgeFamilies(surface.SurfaceId, uniqueedges, surface.PlCoords,.0001,.0001);
-                    }
-                    report.MessageList.Add("Gathered edges and their neighboring relationships.");
-                    report.MessageList.Add("Validating the surfaces' edges alignment with one another (water tightness check.");
-                    //check the edge families to see how water tight the edges are
-                    //there should always be at least one related Edge
-                    //if there is only one, it should match exactly (or within some settable tolerance)
-                    //if there is more than one, they each should only intersect at their ends (within some tolerance) and not intersect
-                    //and there should be no gaps 
-                    foreach (KeyValuePair<int, Vector.EdgeFamily> edgekp in uniqueedges)
-                    {
-                        
-                        if (edgekp.Value.relatedEdges.Count() == 1)
+                        Vector.MemorySafe_CartCoord edgestart = edgekp.Value.startendpt[0];
+                        Vector.MemorySafe_CartCoord edgeend = edgekp.Value.startendpt[1];
+                        Vector.MemorySafe_CartCoord relstart = edgekp.Value.relatedEdges[0].startendpt[0];
+                        Vector.MemorySafe_CartCoord relend = edgekp.Value.relatedEdges[0].startendpt[1];
+                        //if the lengths are the same, then they should match perfectly.
+                        double edgeX = edgestart.X - edgeend.X;
+                        double edgeY = edgestart.Y - edgeend.Y;
+                        double edgeZ = edgestart.Z - edgeend.Z;
+                        Vector.MemorySafe_CartVect edgev = new Vector.MemorySafe_CartVect(edgeX, edgeY, edgeZ);
+                        double edgemag = Vector.VectorMagnitude(edgev);
+
+                        double relX = relstart.X - relend.X;
+                        double relY = relstart.Y - relend.Y;
+                        double relZ = relstart.Z - relend.Z;
+                        Vector.MemorySafe_CartVect relv = new Vector.MemorySafe_CartVect(relX, relY, relZ);
+                        double relmag = Vector.VectorMagnitude(relv);
+
+                        //April 7, 2014.  It is still possible to have only only related edge, but it is not a perfect match, due to the way that 
+                        //I save edge relationships.  I always want to ensure that every edge is matched with at least one neighbor
+                        if (Math.Abs(relmag - edgemag) < report.coordtol)
                         {
+                            ml.Add(spaceid + ": Perfect match check");
                             //should match perfectly
                             List<bool> match = new List<bool>();
                             double tol = report.tolerance;
-                            for(int i = 0; i < 2; i++)
+                            for (int i = 0; i < 2; i++)
                             {
                                 Vector.MemorySafe_CartCoord p1 = edgekp.Value.relatedEdges[0].startendpt[i];
                                 for (int j = 0; j < 2; j++)
@@ -907,30 +882,351 @@ namespace gbXMLValidator
                                     if (p2.X == p1.X && p2.Y == p1.Y && p2.Z == p1.Z)
                                     {
                                         match.Add(true);
-                                        report.MessageList.Add("Surface: " + edgekp.Value.sbdec + " is matched perfectly with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
+                                        ml.Add("Surface: " + edgekp.Value.sbdec + " is matched perfectly with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
                                     }
-                                    else if (Math.Abs(p2.X - p1.X) < tol && Math.Abs(p2.Y - p1.Y) < tol && Math.Abs(p2.Z - p1.Z) < tol)
+                                    else if (Math.Abs(p2.X - p1.X) < tol && Math.Abs(p2.Y - p1.Y) < report.coordtol && Math.Abs(p2.Z - p1.Z) < report.coordtol)
                                     {
                                         match.Add(true);
-                                        report.MessageList.Add("Surface: " + edgekp.Value.sbdec + " is matched within tolerance with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
+                                        ml.Add("Surface: " + edgekp.Value.sbdec + " is matched within tolerance with Surface: " + edgekp.Value.relatedEdges[0].sbdec);
                                     }
                                 }
                             }
                             if (match.Count() < 2)
                             {
-                                report.MessageList.Add("WARNING: This space appears to have an invalid enclosure.");
+                                ml.Add("WARNING: This space appears to have an invalid enclosure.");
                             }
                         }
-                        else if (edgekp.Value.relatedEdges.Count() > 1)
+                        //April 7 2014
+                        //it is safe to conclude that the the two are related, but they overlap.  In this case, since there is only one neighbor
+                        //it should be the case that one edge entirely envelops the other edge.  
+                        //this edge, has to be the one that is enveloped, because it only has one related edge, by convention
+                        else
                         {
-                            //more robust testing
+                            ml.Add(spaceid + ": Overlapping edge match check.");
+                            if (Math.Abs(edgestart.X - relstart.X) <= report.coordtol && Math.Abs(edgestart.Y - relstart.Y) <= report.coordtol && Math.Abs(edgestart.Z - relstart.Z) <= coordtol)
+                            {
+                                double Cx = edgeend.X - relstart.X;
+                                double Cy = edgeend.Y - relstart.Y;
+                                double Cz = edgeend.Z - relstart.Z;
+                                Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+
+                                double Dx = edgeend.X - relend.X;
+                                double Dy = edgeend.Y - relend.Y;
+                                double Dz = edgeend.Z - relend.Z;
+                                Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+
+                                double dotend = Vector.DotProductMag(C, D);
+                                //both of these dot products should point in opposite directions, proving the edge is entirely enveloped
+                                if (Math.Abs(dotend) - 1 <= report.vectorangletol)
+                                {
+                                    ml.Add(spaceid + ": SUCCESS - Overlapping edges properly match.");
+                                }
+                                else
+                                {
+                                    ml.Add(spaceid + ": FAIL - Overlapping edges do not match as expected.");
+                                }
+                            }
+                            else if (Math.Abs(edgestart.X - relend.X) <= report.coordtol && Math.Abs(edgestart.Y - relend.Y) <= report.coordtol && Math.Abs(edgestart.Z - relend.Z) <= coordtol)
+                            {
+                                double Cx = edgeend.X - relstart.X;
+                                double Cy = edgeend.Y - relstart.Y;
+                                double Cz = edgeend.Z - relstart.Z;
+                                Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+
+                                double Dx = edgeend.X - relend.X;
+                                double Dy = edgeend.Y - relend.Y;
+                                double Dz = edgeend.Z - relend.Z;
+                                Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+
+                                double dotend = Vector.DotProductMag(C, D);
+                                //both of these dot products should point in opposite directions, proving the edge is entirely enveloped
+                                if (Math.Abs(dotend) - 1 <= report.vectorangletol)
+                                {
+                                    ml.Add(spaceid + ": SUCCESS - Overlapping edges properly match.");
+                                }
+                                else
+                                {
+                                    ml.Add(spaceid + ": FAIL - Overlapping edges do not match as expected.");
+                                }
+                            }
+                            else if (Math.Abs(edgeend.X - relstart.X) <= report.coordtol && Math.Abs(edgeend.Y - relstart.Y) <= report.coordtol && Math.Abs(edgeend.Z - relstart.Z) <= coordtol)
+                            {
+                                double Ax = edgestart.X - relstart.X;
+                                double Ay = edgestart.Y - relstart.Y;
+                                double Az = edgestart.Z - relstart.Z;
+                                Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+
+                                double Bx = edgestart.X - relend.X;
+                                double By = edgestart.Y - relend.Y;
+                                double Bz = edgestart.Z - relend.Z;
+                                Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+
+                                double dotstart = Vector.DotProductMag(A, B);
+                                //both of these dot products should point in opposite directions, proving the edge is entirely enveloped
+                                if (Math.Abs(dotstart) - 1 <= report.vectorangletol)
+                                {
+                                    ml.Add(spaceid + ": SUCCESS - Overlapping edges properly match.");
+                                }
+                                else
+                                {
+                                    ml.Add(spaceid + ": FAIL - Overlapping edges do not match as expected.");
+                                }
+                            }
+                            else if (Math.Abs(edgeend.X - relend.X) <= report.coordtol && Math.Abs(edgeend.Y - relend.Y) <= report.coordtol && Math.Abs(edgeend.Z - relend.Z) <= coordtol)
+                            {
+                                double Ax = edgestart.X - relstart.X;
+                                double Ay = edgestart.Y - relstart.Y;
+                                double Az = edgestart.Z - relstart.Z;
+                                Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+
+                                double Bx = edgestart.X - relend.X;
+                                double By = edgestart.Y - relend.Y;
+                                double Bz = edgestart.Z - relend.Z;
+                                Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+
+                                double dotstart = Vector.DotProductMag(A, B);
+                                //both of these dot products should point in opposite directions, proving the edge is entirely enveloped
+                                if (Math.Abs(dotstart) - 1 <= report.vectorangletol)
+                                {
+                                    ml.Add(spaceid + ": SUCCESS - Overlapping edges properly match.");
+                                }
+                                else
+                                {
+                                    ml.Add(spaceid + ": FAIL - Overlapping edges do not match as expected.");
+                                }
+                            }
+                            else
+                            {
+                                double Ax = edgestart.X - relstart.X;
+                                double Ay = edgestart.Y - relstart.Y;
+                                double Az = edgestart.Z - relstart.Z;
+                                Vector.MemorySafe_CartVect A = new Vector.MemorySafe_CartVect(Ax, Ay, Az);
+
+                                double Bx = edgestart.X - relend.X;
+                                double By = edgestart.Y - relend.Y;
+                                double Bz = edgestart.Z - relend.Z;
+                                Vector.MemorySafe_CartVect B = new Vector.MemorySafe_CartVect(Bx, By, Bz);
+
+                                double Cx = edgeend.X - relstart.X;
+                                double Cy = edgeend.Y - relstart.Y;
+                                double Cz = edgeend.Z - relstart.Z;
+                                Vector.MemorySafe_CartVect C = new Vector.MemorySafe_CartVect(Cx, Cy, Cz);
+
+                                double Dx = edgeend.X - relend.X;
+                                double Dy = edgeend.Y - relend.Y;
+                                double Dz = edgeend.Z - relend.Z;
+                                Vector.MemorySafe_CartVect D = new Vector.MemorySafe_CartVect(Dx, Dy, Dz);
+
+                                double dotstart = Vector.DotProductMag(A, B);
+                                double dotend = Vector.DotProductMag(C, D);
+                                //both of these dot products should point in opposite directions, proving the edge is entirely enveloped
+                                if (Math.Abs(dotstart) - 1 <= report.vectorangletol && Math.Abs(dotend) - 1 <= report.vectorangletol)
+                                {
+                                    ml.Add(spaceid + ": SUCCESS - Overlapping edges properly match.");
+                                }
+                                else
+                                {
+                                    ml.Add(spaceid + ": FAIL - Overlapping edges do not match as expected.");
+                                }
+                            }
                         }
-                        else if (edgekp.Value.relatedEdges.Count() == 0)
+
+                    }
+                    else if (edgekp.Value.relatedEdges.Count() > 1)
+                    {
+                        //more robust testing
+                        Vector.EdgeFamily[] orderededges = new Vector.EdgeFamily[edgekp.Value.relatedEdges.Count()];
+                        //align the related edges
+                        orderededges = AlignEdges(orderededges, edgekp.Value, coordtol);
+                        
+                            int coordcount = 0;
+                            double segmentslength = 0;
+                            int lastct = edgekp.Value.relatedEdges.Count() * 2 - 2;
+                            Vector.CartCoord st = new Vector.CartCoord();
+                            Vector.CartCoord end = new Vector.CartCoord();
+                            foreach (Vector.EdgeFamily edge in orderededges)
+                            {
+
+                                if (coordcount == 0)
+                                {
+                                    st.X = edge.startendpt[0].X;
+                                    st.Y = edge.startendpt[0].Y;
+                                    st.Z = edge.startendpt[0].Z;
+                                }
+
+                                if (coordcount == lastct)
+                                {
+                                    end.X = edge.startendpt[1].X;
+                                    end.Y = edge.startendpt[1].Y;
+                                    end.Z = edge.startendpt[1].Z;
+                                }
+                                Vector.MemorySafe_CartVect v = Vector.CreateMemorySafe_Vector(edge.startendpt[0], edge.startendpt[1]);
+                                double mag = Vector.VectorMagnitude(v);
+                                segmentslength += mag;
+                                coordcount += 2;
+                            }
+                            Vector.MemorySafe_CartVect v2 = Vector.CreateMemorySafe_Vector(edgekp.Value.startendpt[0], edgekp.Value.startendpt[1]);
+                            double mag2 = Vector.VectorMagnitude(v2);
+                            if (Math.Abs(segmentslength - mag2) < report.lengthtol)
+                            {
+                                ml.Add(spaceid + ": SUCCESS - Overlapping edges properly match.");
+                            }
+                            else
+                            {
+                                //then something is wrong.
+                                ml.Add(spaceid + ": FAIL - Overlapping edges do not match as expected.");
+                            }
+
+                    }
+                    else if (edgekp.Value.relatedEdges.Count() == 0)
+                    {
+                        //something is wrong
+                        ml.Add("WARNING:  This space has an edge that has no relationships.  Indicates a volume that is not enclosed.");
+                    }
+                }
+                report.MessageList[spaceid] = ml;
+                return report;
+
+            }
+            catch (Exception e)
+            {
+                report.longMsg = ("SORRY, we have run into an unexpected issue:" + e.ToString());
+                report.passOrFail = false;
+                return report;
+            }
+
+        }
+        //we have already proven that the neighboring edges are aligned with the edge
+        //so we do not perform an exhaustive vector search to find the answer.  All we do instead is try and position them correctly 
+        //in sequence as well as is possible.  
+        //we do not check for overlaps until later
+        public static Vector.EdgeFamily[] AlignEdges(Vector.EdgeFamily[] alignededges, Vector.EdgeFamily edge, double tol)
+        {
+            try
+            {
+                List<double> magnitudes = new List<double>();
+                List<int> indices = new List<int>();
+                for (int i = 0; i < edge.relatedEdges.Count(); i++)
+                {
+                    Vector.MemorySafe_CartCoord longstart = edge.startendpt[0];
+                    Vector.MemorySafe_CartCoord longend = edge.startendpt[1];
+                    Vector.MemorySafe_CartVect longv = Vector.CreateMemorySafe_Vector(longstart, longend);
+                    double maglong = Vector.VectorMagnitude(longv);
+                    Vector.EdgeFamily shortedge = edge.relatedEdges[i];
+                    Vector.MemorySafe_CartCoord shortstart = shortedge.startendpt[0];
+                    Vector.MemorySafe_CartCoord shortend = shortedge.startendpt[1];
+                    Vector.MemorySafe_CartVect el1 = Vector.CreateMemorySafe_Vector(longstart, shortstart);
+                    Vector.MemorySafe_CartVect el2 = Vector.CreateMemorySafe_Vector(longstart, shortend);
+                    double magel1 = Vector.VectorMagnitude(el1);
+                    double magel2 = Vector.VectorMagnitude(el2);
+
+                    
+                    //put the greater of the two magnitudes in the list
+                    if (magel1 > magel2)
+                    {
+                        shortedge.startendpt.Reverse();
+                        if (magnitudes.Count >= 1)
                         {
-                            //something is wrong
-                            report.MessageList.Add("WARNING:  This space has an edge that has no relationships.  Indicates a volume that is not enclosed.");
+                            bool added = false;
+                            for (int m = 0; m < magnitudes.Count(); m++)
+                            {
+                                if (magel1 < magnitudes[m])
+                                {
+                                    magnitudes.Insert(m, magel1);
+                                    indices.Insert(m, i);
+                                    added = true;
+                                    break;
+                                }
+                            }
+                            if (!added)
+                            {
+                                magnitudes.Add(magel1);
+                                indices.Add(i);
+                            }
+
+                        }
+                        else
+                        {
+                            magnitudes.Add(magel1);
+                            indices.Add(i);
                         }
                     }
+                    else
+                    {
+                        if (magnitudes.Count >= 1)
+                        {
+                            bool added = false;
+                            for (int m = 0; m < magnitudes.Count(); m++)
+                            {
+                                if (magel1 < magnitudes[m])
+                                {
+                                    magnitudes.Insert(m, magel2);
+                                    indices.Insert(m, i);
+                                    added = true;
+                                    break;
+                                }
+                            }
+                            if (!added)
+                            {
+                                magnitudes.Add(magel2);
+                                indices.Add(i);
+                            }
+
+                        }
+                        else
+                        {
+                            magnitudes.Add(magel2);
+                            indices.Add(i);
+                        }
+                    }
+
+                }
+                int alignedcounter = 0;
+                foreach (int i in indices)
+                {
+                    alignededges[alignedcounter] = edge.relatedEdges[i];
+                    alignedcounter++;
+                }
+
+                return alignededges;
+
+                
+            }
+            catch (Exception e)
+            {
+
+            }
+            return alignededges;
+        }
+
+        public static DOEgbXMLPhase2Report CheckSurfaceEnclosure(Dictionary<string, List<SurfaceDefinitions>> surfaceEnclosures, DOEgbXMLPhase2Report report)
+        {
+            try
+            {
+                report.testSummary = "This test checks surfaces proclaiming to be children of a given space ID.";
+                report.testSummary += "  It searches each of the surfaces' edges and tries to find other edges that align.";
+
+                foreach (KeyValuePair<string, List<SurfaceDefinitions>> kp in surfaceEnclosures)
+                {
+                    List<string> ml = new List<string>();
+                    ml.Add(kp.Key+": Testing begins.");
+                    Dictionary<int, Vector.EdgeFamily> uniqueedges = new Dictionary<int, Vector.EdgeFamily>();
+                    
+                    foreach (SurfaceDefinitions surface in kp.Value)
+                    {
+                        uniqueedges = Vector.GetEdgeFamilies(surface.SurfaceId, uniqueedges, surface.PlCoords,.0001,.0001);
+                    }
+                    ml.Add("Gathered edges and their neighboring relationships.");
+                    ml.Add("Validating the surfaces' edges alignment with one another (water tightness check.");
+                    //check the edge families to see how water tight the edges are
+                    //there should always be at least one related Edge
+                    //if there is only one, it should match exactly (or within some settable tolerance)
+                    //if there is more than one, they each should only intersect at their ends (within some tolerance) and not intersect
+                    //and there should be no gaps 
+                    //new function added April 11, 2014
+                    report = MatchEdges(uniqueedges, ml, report, kp.Key);
+                    
+                    report.MessageList[kp.Key] = ml;
                 }
             }
             catch (Exception e)
