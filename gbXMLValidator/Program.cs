@@ -16,12 +16,18 @@ namespace gbXMLValidator
         static double coordtol = DOEgbXMLBasics.Tolerances.coordToleranceIP;
         //path of Text file output
         static string outputpath = @"C:\gbXML";
+        static string reportpath = @"C:\gbXML\report.txt";
         //a good time to figure out what to do with my units
 
         //an example main that has all of the tests that we would like to perform
         static void Main(string[] args)
         {
             bool spaceBoundsPresent = false;
+            //Destroy old reporting files
+            if(File.Exists(reportpath))
+            {
+                File.Delete(reportpath);
+            }
             //Basic File Preparation and Checks --------------------------------------------------------------------------------------------
             
             DOEgbXML.XMLParser parser = new XMLParser();
@@ -29,7 +35,7 @@ namespace gbXMLValidator
             //2-check for valid XML and valid gbXML against the XSD
 
             //hardcoded for testing purposes, eventually this file will be uploaded, or sent via a Restful API call
-            string path = @"C:\Temp\gbXML\20_20.xml";
+            string path = @"C:\Users\Chiensi\Documents\C\CarmelSoft\gbXML Project\Phase 2\Validator Test Cases\Test Case 2.xml";
             XmlReader xmlreader = XmlReader.Create(path);
             XmlDocument myxml = new XmlDocument();
             myxml.Load(xmlreader);
@@ -50,6 +56,7 @@ namespace gbXMLValidator
             //ensure that all names of spaces are unique
             report = DOEgbXML.gbXMLSpaces.UniqueSpaceIdTest2(myxml, nsm, report);
             //process report
+            ProcessReport(report,reportpath);
             report.Clear();
             //ensure that all space boundary names are unique
 
@@ -59,6 +66,7 @@ namespace gbXMLValidator
                 spaceBoundsPresent = true;
                 report = DOEgbXML.gbXMLSpaces.UniqueSpaceBoundaryIdTest2(myxml, nsm, report);
                 //process report
+                ProcessReport(report,reportpath);
                 report.Clear();
             }
 
@@ -76,11 +84,13 @@ namespace gbXMLValidator
 
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesCCTest2(spaces, report);
             //process report
+            ProcessReport(report,reportpath);
             report.Clear();
             //-check for non-planar objects for all Spaces' polyloops
             report.coordtol = .0001;
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesPlanarTest(spaces, report);
             //process report
+            ProcessReport(report,reportpath);
             report.Clear();
 
 
@@ -91,6 +101,7 @@ namespace gbXMLValidator
             report.coordtol = 0.00001;
             report = CheckSpaceEnclosureSG(spaces, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
 
 
@@ -100,19 +111,23 @@ namespace gbXMLValidator
             //Are there at least 4 surface definitions?  (see the surface requirements at the campus node)
             report = SurfaceDefinitions.AtLeast4Surfaces(myxml, nsm, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
             //Does the AdjacentSpaceId not exceed the max number allowable?
             //this needs to be updated!
             report = SurfaceDefinitions.AtMost2SpaceAdjId(myxml, nsm, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
             //Are all required elements and attributes in place?
             report = SurfaceDefinitions.RequiredSurfaceFields(myxml, nsm, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
             //ensure that all names of surfaces are unique
             report = DOEgbXML.SurfaceDefinitions.SurfaceIDUniquenessTest(myxml, nsm, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
 
             //now grab all the surfaceIds and make them available
@@ -132,6 +147,7 @@ namespace gbXMLValidator
                 report.tolerance = DOEgbXMLBasics.Tolerances.coordToleranceIP;
                 report = SurfaceDefinitions.SurfaceMatchesSpaceBoundary(myxml, nsm, report);
                 //process report
+                ProcessReport(report, reportpath);
                 report.Clear();
             }
 
@@ -140,12 +156,14 @@ namespace gbXMLValidator
             report.vectorangletol = 0.0001;
             report = SurfaceDefinitions.SurfaceTiltAndAzCheck(myxml, nsm, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
 
             //planar surface test
             report.vectorangletol = 0.0001;
             report = SurfaceDefinitions.TestSurfacePlanarTest(surfaces, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
 
             //I must take the surfaces, group them, and rearrange any interior surfaces' coordinates that should be pointed the opposite way
@@ -176,6 +194,7 @@ namespace gbXMLValidator
             //counter clockwise winding test
             report = SurfaceDefinitions.SurfaceCCTest(enclosure, report);
             //process report
+            ProcessReport(report, reportpath);
             report.Clear();
 
             //self intersecting polygon test
@@ -192,6 +211,8 @@ namespace gbXMLValidator
             report.lengthtol = 0.0001;
             report.coordtol = 0.00001;
             report = CheckSurfaceEnclosure(enclosure, report);
+            ProcessReport(report, reportpath);
+            report.Clear();
 
           
             //Openings Tests-----------------------------------------------------
@@ -201,6 +222,87 @@ namespace gbXMLValidator
 
             
 
+        }
+
+        private static void ProcessReport(DOEgbXMLPhase2Report report, string path)
+        {
+            if (!File.Exists(path))
+            {
+
+
+                using (System.IO.StreamWriter file = new System.IO.StreamWriter(path))
+                {
+                    file.WriteLine("Explanation of Test: " + report.testSummary);
+                    if (report.passOrFail) { file.WriteLine("Test has Passed."); }
+                    else { file.WriteLine("Test has failed."); }
+                    file.WriteLine("Explanation of Test: " + report.longMsg);
+                    if (report.TestPassedDict.Count() > 0)
+                    {
+                        file.WriteLine("Summary of findings: ");
+                        foreach (KeyValuePair<string, bool> kp in report.TestPassedDict)
+                        {
+                            // If the line doesn't contain the word 'Second', write the line to the file. 
+                            string line = kp.Key + ":" + kp.Value.ToString();
+                            file.WriteLine(line);
+                        }
+
+                    }
+                    //more detail
+
+
+                    if (report.MessageList.Count() > 0)
+                    {
+                        foreach (KeyValuePair<string, List<string>> message in report.MessageList)
+                        {
+                            
+                            foreach (string finding in message.Value)
+                            {
+                                string line = message.Key + ": ";
+                                line += finding;
+                                file.WriteLine(line);
+                            }
+                        }
+                    }
+                    file.WriteLine("\n");
+                }
+            }
+            else
+            {
+                using (StreamWriter sw = File.AppendText(path))
+                {
+                    sw.WriteLine("Explanation of Test: " + report.testSummary);
+                    if (report.passOrFail) { sw.WriteLine("Test has Passed."); }
+                    else { sw.WriteLine("Test has failed."); }
+                    sw.WriteLine("Explanation of Test: " + report.longMsg);
+                    if (report.TestPassedDict.Count() > 0)
+                    {
+                        sw.WriteLine("Summary of findings: ");
+                        foreach (KeyValuePair<string, bool> kp in report.TestPassedDict)
+                        {
+                            // If the line doesn't contain the word 'Second', write the line to the file. 
+                            string line = kp.Key + ":" + kp.Value.ToString();
+                            sw.WriteLine(line);
+                        }
+
+                    }
+                    //more detail
+
+                    if (report.MessageList.Count() > 0)
+                    {
+                        foreach (KeyValuePair<string, List<string>> message in report.MessageList)
+                        {
+                            
+                            foreach (string finding in message.Value)
+                            {
+                                string line = message.Key + ": ";
+                                line += finding;
+                                sw.WriteLine(line);
+                            }
+                        }
+                    }
+                    sw.WriteLine("\n");
+                }
+            }
         }
         //April 14, 2014 - Deprecated as not useful or within scope
         //private static Dictionary<Vector.CartCoord, Tuple<List<string>, List<bool>>> GetSBVertices(XmlNamespaceManager nsm, XmlDocument zexml)
