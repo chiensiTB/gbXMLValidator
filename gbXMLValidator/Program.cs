@@ -54,6 +54,7 @@ namespace gbXMLValidator
 
 
             //ensure that all names of spaces are unique
+            report.testType = TestType.Unique_Space_ID_Test;
             report = DOEgbXML.gbXMLSpaces.UniqueSpaceIdTest2(myxml, nsm, report);
             //process report
             ProcessReport(report,reportpath);
@@ -64,10 +65,19 @@ namespace gbXMLValidator
             if (nodes.Count > 0)
             {
                 spaceBoundsPresent = true;
+                report.testType = TestType.Unique_Space_Boundary;
                 report = DOEgbXML.gbXMLSpaces.UniqueSpaceBoundaryIdTest2(myxml, nsm, report);
                 //process report
-                ProcessReport(report,reportpath);
+                ProcessReport(report, reportpath);
                 report.Clear();
+            }
+            else
+            {
+                //needs to be included so the report can be processed
+                report.testType = TestType.Unique_Space_Boundary;
+                report.passOrFail = true;
+                report.longMsg = "A test is usually performed here to ensure Space Boundaries have valid naming conventions.  This test was skipped (legally) because your file does not have space boundaries present.  Continuing to next test.";
+                ProcessReport(report, reportpath);
             }
 
             //Space Tests
@@ -83,11 +93,13 @@ namespace gbXMLValidator
             //check that all polyloops are in a counterclockwise direction
 
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesCCTest2(spaces, report);
+            report.testType = TestType.Space_Surfaces_CC;
             //process report
             ProcessReport(report,reportpath);
             report.Clear();
             //-check for non-planar objects for all Spaces' polyloops
-            report.coordtol = .0001;
+            report.testType = TestType.Space_Surfaces_Planar;
+            report.coordtol = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
             report = DOEgbXML.gbXMLSpaces.SpaceSurfacesPlanarTest(spaces, report);
             //process report
             ProcessReport(report,reportpath);
@@ -96,9 +108,9 @@ namespace gbXMLValidator
 
             //valid space enclosure?
             report.tolerance = 0.0001;
-            report.vectorangletol = 0.00001;
-            report.lengthtol = 0.0001;
-            report.coordtol = 0.00001;
+            report.vectorangletol = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
+            report.lengthtol = DOEgbXMLBasics.Tolerances.lengthTolerance;
+            report.coordtol = DOEgbXMLBasics.Tolerances.coordToleranceIP;
             report = CheckSpaceEnclosureSG(spaces, report);
             //process report
             ProcessReport(report, reportpath);
@@ -109,22 +121,26 @@ namespace gbXMLValidator
             //Basic Requirements ------------------------------------------------------
 
             //Are there at least 4 surface definitions?  (see the surface requirements at the campus node)
+            report.testType = TestType.At_Least_4_Surfaces;
             report = SurfaceDefinitions.AtLeast4Surfaces(myxml, nsm, report);
             //process report
             ProcessReport(report, reportpath);
             report.Clear();
             //Does the AdjacentSpaceId not exceed the max number allowable?
             //this needs to be updated!
+            report.testType = TestType.Two_Adj_Space_Id;
             report = SurfaceDefinitions.AtMost2SpaceAdjId(myxml, nsm, report);
             //process report
             ProcessReport(report, reportpath);
             report.Clear();
             //Are all required elements and attributes in place?
+            report.testType = TestType.Required_Surface_Fields;
             report = SurfaceDefinitions.RequiredSurfaceFields(myxml, nsm, report);
             //process report
             ProcessReport(report, reportpath);
             report.Clear();
             //ensure that all names of surfaces are unique
+            report.testType = TestType.Surface_ID_Uniqueness;
             report = DOEgbXML.SurfaceDefinitions.SurfaceIDUniquenessTest(myxml, nsm, report);
             //process report
             ProcessReport(report, reportpath);
@@ -139,28 +155,39 @@ namespace gbXMLValidator
             
             List<SurfaceDefinitions> surfaces = DOEgbXML.XMLParser.MakeSurfaceList(myxml, nsm);
             //make sure the surface Adjacent space Id names match only the the space Ids gathered above.  The adjacent space Ids can't have their own special values
+            report.testType = TestType.Surface_Adj_Id_Match;
             report = DOEgbXML.SurfaceDefinitions.SurfaceAdjSpaceIdTest(spaceIds,surfaces, report);
+            ProcessReport(report,reportpath);
             report.Clear();
 
             if (spaceBoundsPresent)
             {
                 report.tolerance = DOEgbXMLBasics.Tolerances.coordToleranceIP;
+                report.testType = TestType.Surface_ID_SB_Match;
                 report = SurfaceDefinitions.SurfaceMatchesSpaceBoundary(myxml, nsm, report);
                 //process report
                 ProcessReport(report, reportpath);
                 report.Clear();
             }
+            else
+            {
+                report.testType = TestType.Surface_ID_SB_Match;
+                report.passOrFail = true;
+                report.longMsg = "A test is usually performed here to ensure Space Boundaries and Surfaces share the same ID.  This test was skipped (legally) because your file does not have space boundaries present.  Continuing to next test.";
+                ProcessReport(report, reportpath);
+            }
 
             //Does the polyloop right hand rule vector form the proper azimuth and tilt? (with and without a CADModelAzimuth)
             report.tolerance = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
-            report.vectorangletol = 0.0001;
+            report.vectorangletol = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
+            report.testType = TestType.Surface_Tilt_Az_Check;
             report = SurfaceDefinitions.SurfaceTiltAndAzCheck(myxml, nsm, report);
             //process report
             ProcessReport(report, reportpath);
             report.Clear();
 
             //planar surface test
-            report.vectorangletol = 0.0001;
+            report.vectorangletol = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
             report = SurfaceDefinitions.TestSurfacePlanarTest(surfaces, report);
             //process report
             ProcessReport(report, reportpath);
@@ -192,6 +219,7 @@ namespace gbXMLValidator
             }
 
             //counter clockwise winding test
+            report.testType = TestType.Surface_CC_Test;
             report = SurfaceDefinitions.SurfaceCCTest(enclosure, report);
             //process report
             ProcessReport(report, reportpath);
@@ -207,9 +235,10 @@ namespace gbXMLValidator
 
             //surface enclosure tests
             report.tolerance = 0.0001;
-            report.vectorangletol = 0.00001;
-            report.lengthtol = 0.0001;
-            report.coordtol = 0.00001;
+            report.vectorangletol = DOEgbXMLBasics.Tolerances.VectorAngleTolerance;
+            report.lengthtol = DOEgbXMLBasics.Tolerances.lengthTolerance;
+            report.coordtol = DOEgbXMLBasics.Tolerances.coordToleranceIP;
+            report.testType = TestType.Check_Surface_Enclosure;
             report = CheckSurfaceEnclosure(enclosure, report);
             ProcessReport(report, reportpath);
             report.Clear();

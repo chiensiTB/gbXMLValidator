@@ -40,9 +40,8 @@
       <SpecificVersion>False</SpecificVersion>
       <Private>True</Private>
     </Reference>
-    <Reference Include="log4net, Version=1.2.13.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\AAATerabuild\Programming\Logging\log4net-1.2.13-src\log4net-1.2.13\build\bin\net\2.0\release\log4net.dll</HintPath>
+    <Reference Include="log4net">
+      <HintPath>..\..\..\..\AAATerabuild\Software Engineering\Resources\DotNet\Logging\log4net-1.2.13-src\log4net-1.2.13\build\bin\net\2.0\release\log4net.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
