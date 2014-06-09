@@ -9,4 +9,3 @@ C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValid
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\bin\Debug\VectorMath.pdb
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\obj\x86\Debug\gbXMLValidator.exe
 C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\obj\x86\Debug\gbXMLValidator.pdb
-C:\Users\Chiensi\Documents\Visual Studio 2010\Projects\gbXMLValidator\gbXMLValidator\obj\x86\Debug\gbXMLValidator.csprojResolveAssemblyReference.cache

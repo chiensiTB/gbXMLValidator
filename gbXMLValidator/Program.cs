@@ -35,7 +35,8 @@ namespace gbXMLValidator
             //2-check for valid XML and valid gbXML against the XSD
 
             //hardcoded for testing purposes, eventually this file will be uploaded, or sent via a Restful API call
-            string path = @"C:\Users\Chiensi\Documents\C\CarmelSoft\gbXML Project\Phase 2\Validator Test Cases\Test Case 2.xml";
+            //string path = @"C:\Users\Chiensi\Documents\C\CarmelSoft\gbXML Project\Phase 2\Validator Test Cases\Test Case 2.xml";
+            string path = @"C:\gbXML\test.xml";
             XmlReader xmlreader = XmlReader.Create(path);
             XmlDocument myxml = new XmlDocument();
             myxml.Load(xmlreader);
@@ -59,8 +60,7 @@ namespace gbXMLValidator
             //process report
             ProcessReport(report,reportpath);
             report.Clear();
-            //ensure that all space boundary names are unique
-
+            
             XmlNodeList nodes = myxml.SelectNodes("/gbXMLv5:gbXML/gbXMLv5:Campus/gbXMLv5:Building/gbXMLv5:Space/gbXMLv5:SpaceBoundary", nsm);
             if (nodes.Count > 0)
             {
